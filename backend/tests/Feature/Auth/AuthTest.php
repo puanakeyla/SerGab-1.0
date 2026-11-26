@@ -32,6 +32,28 @@ class AuthTest extends TestCase
             ->assertJsonPath('user.role.nama_role', 'makloon');
     }
 
+    public function test_login_mobile_mengembalikan_token_yang_bisa_dipakai(): void
+    {
+        $user = $this->buatUser();
+
+        $token = $this->postJson('/api/login', [
+            'username' => $user->username, 'password' => 'password', 'device_name' => 'hp-uji',
+        ])->assertOk()->json('token');
+
+        $this->assertNotEmpty($token);
+        $this->withToken($token)->getJson('/api/me')->assertOk()->assertJsonPath('user.id', $user->id);
+    }
+
+    public function test_logout_mobile_mencabut_token(): void
+    {
+        $user = $this->buatUser();
+        $token = $user->createToken('hp-uji')->plainTextToken;
+
+        $this->withToken($token)->postJson('/api/logout')->assertNoContent();
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
     public function test_login_menolak_password_salah(): void
     {
         $user = $this->buatUser();
