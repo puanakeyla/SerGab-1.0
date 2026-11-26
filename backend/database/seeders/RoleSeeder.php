@@ -16,6 +16,8 @@ class RoleSeeder extends Seeder
             'ub_jastasma',
             'pengadaan',
             'keuangan',
+            'operasi',
+            'gudang',
             'admin',
         ])->each(function (string $nama) {
             Role::firstOrCreate(['nama_role' => $nama]);
