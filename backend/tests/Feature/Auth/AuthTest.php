@@ -62,6 +62,20 @@ class AuthTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_login_membatasi_percobaan_per_username_dan_ip(): void
+    {
+        $user = $this->buatUser();
+        $payload = ['username' => $user->username, 'password' => 'salah-sekali'];
+
+        foreach (range(1, 5) as $_) {
+            $this->postJson('/api/login', $payload)->assertStatus(422);
+        }
+
+        $this->postJson('/api/login', $payload)->assertTooManyRequests();
+        $this->postJson('/api/login', ['username' => 'akun-lain', 'password' => 'salah-sekali'])
+            ->assertStatus(422);
+    }
+
     public function test_login_menolak_akun_nonaktif(): void
     {
         $user = $this->buatUser('makloon', ['is_active' => false]);

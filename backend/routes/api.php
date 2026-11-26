@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::pattern('transaksi', '.*');
 
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 Route::get('/foto/{media}', [FotoStreamController::class, 'stream'])
     ->middleware('signed')
