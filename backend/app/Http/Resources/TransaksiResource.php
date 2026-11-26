@@ -1,0 +1,64 @@
+<?php
+
+namespace App\Http\Resources;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class TransaksiResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        // Makloon melihat transaksinya sendiri sampai TAHAPNYA SENDIRI saja. Blok tahap sesudahnya
+        // (UB Jastasma dan seterusnya, termasuk harga & pembayaran di level PO) bukan urusan mitra
+        // makloon, jadi tetap kosong di timeline maupun rekap -- bukan hanya disembunyikan di UI.
+        $sampaiTahapMakloon = $request->user()?->role?->nama_role === 'makloon';
+
+        return [
+            'id_transaksi' => $this->id_transaksi,
+            'skema' => $this->skema,
+            'current_stage' => $this->current_stage,
+            'status_keseluruhan' => $this->status_keseluruhan,
+            // Diisi hanya oleh TransaksiController::index() lewat selectRaw; endpoint lain
+            // (show/rekap) tidak menghitungnya, jadi field-nya absen di sana, bukan null.
+            'kerjaan' => $this->when(isset($this->kerjaan), fn () => $this->kerjaan),
+            'created_by' => $this->created_by,
+            'nama_maklon' => $this->makloonUser()?->nama_maklon,
+            'makloon_kecamatan' => $this->makloonUser()?->kecamatan,
+            'makloon_kabupaten' => $this->makloonUser()?->kabupaten,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'data_jemput_pangan' => $this->whenLoaded(
+                'dataJemputPangan',
+                fn () => $this->dataJemputPangan ? new DataJemputPanganResource($this->dataJemputPangan) : null
+            ),
+            'data_makloon_mpp' => $this->whenLoaded('dataMakloonMpp'),
+            'data_makloon_terima' => $this->whenLoaded('dataMakloonTerima'),
+            'data_makloon_tjp' => $this->whenLoaded('dataMakloonTjp'),
+            'data_ub_jastasma' => $sampaiTahapMakloon ? null : $this->whenLoaded('dataUbJastasma'),
+            // PO tempat transaksi ini bernaung (null bila belum digabung). Dipakai timeline untuk
+            // merender panel Pengadaan/Keuangan inline. Satu transaksi hanya punya satu po_detail.
+            'data_pengadaan' => $sampaiTahapMakloon ? null : $this->whenLoaded('poDetail', function () {
+                $po = $this->poDetail->first()?->dataPengadaan;
+
+                return $po ? new DataPengadaanResource($po) : null;
+            }),
+            'riwayat_penolakan' => RiwayatPenolakanResource::collection($this->whenLoaded('riwayatPenolakan')),
+        ];
+    }
+
+    /**
+     * User mitra makloon transaksi ini -- sumbernya beda per skema: MPP dibuat oleh
+     * makloon sendiri (creator), TJP menunjuk makloon lewat data_jemput_pangan.makloon_user_id.
+     * Dipakai frontend untuk mengelompokkan daftar transaksi per makloon beserta lokasinya.
+     */
+    private function makloonUser(): ?User
+    {
+        if ($this->skema === 'MPP') {
+            return $this->creator;
+        }
+
+        return $this->dataJemputPangan?->makloon;
+    }
+}
