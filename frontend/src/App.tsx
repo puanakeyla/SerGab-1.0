@@ -15,8 +15,21 @@ import AdminUsersPage from './pages/AdminUsersPage'
 import MonitoringPage from './pages/MonitoringPage'
 import RekapTransaksiPage from './pages/RekapTransaksiPage'
 import AdminAuditLogPage from './pages/AdminAuditLogPage'
+import { bolehAkses } from './lib/navActions'
 
 const queryClient = new QueryClient()
+
+// Halaman yang aksesnya dibatasi per role; daftar role-nya di AKSES_HALAMAN (lib/navActions).
+const HALAMAN_BERPERAN: Record<string, React.ReactNode> = {
+  '/transaksi/baru': <TransaksiJemputPanganPage />,
+  '/transaksi/baru-mpp': <TransaksiMakloonBaruPage />,
+  '/pengadaan': <PengadaanPage />,
+  '/keuangan': <KeuanganPage />,
+  '/admin/users': <AdminUsersPage />,
+  '/admin/audit-logs': <AdminAuditLogPage />,
+  '/monitoring': <MonitoringPage />,
+  '/rekap': <RekapTransaksiPage />,
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -25,6 +38,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!user) return <Navigate to="/login" replace />
 
   return <>{children}</>
+}
+
+/** Role tanpa akses dikembalikan ke dashboard, bukan dibiarkan melihat halaman yang lalu 403. */
+function RoleRoute({ path, element }: { path: string; element: React.ReactNode }) {
+  const { user } = useAuth()
+  if (user && !bolehAkses(user.role.nama_role, path)) return <Navigate to="/dashboard" replace />
+  return <>{element}</>
 }
 
 function RedirectToTransaksiDetail() {
@@ -45,17 +65,12 @@ function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/transaksi/baru" element={<TransaksiJemputPanganPage />} />
         <Route path="/transaksi/:id" element={<TransaksiDetailPage />} />
         <Route path="/transaksi/:id/ub-jastasma" element={<RedirectToTransaksiDetail />} />
         <Route path="/transaksi/:id/makloon" element={<RedirectToTransaksiDetail />} />
-        <Route path="/transaksi/baru-mpp" element={<TransaksiMakloonBaruPage />} />
-        <Route path="/pengadaan" element={<PengadaanPage />} />
-        <Route path="/keuangan" element={<KeuanganPage />} />
-        <Route path="/admin/users" element={<AdminUsersPage />} />
-        <Route path="/admin/audit-logs" element={<AdminAuditLogPage />} />
-        <Route path="/monitoring" element={<MonitoringPage />} />
-        <Route path="/rekap" element={<RekapTransaksiPage />} />
+        {Object.entries(HALAMAN_BERPERAN).map(([path, element]) => (
+          <Route key={path} path={path} element={<RoleRoute path={path} element={element} />} />
+        ))}
       </Route>
     </Routes>
   )
