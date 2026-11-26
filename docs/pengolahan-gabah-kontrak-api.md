@@ -1,4 +1,4 @@
-# Modul Pengolahan Gabah — Kontrak REST API Awal (v0.2, draf untuk disepakati FE)
+# Modul Pengolahan Gabah — Kontrak REST API Awal (v0.3, draf untuk disepakati FE)
 
 Status: **draf**. Setelah disepakati frontend web dan mobile, kontrak ini juga diekspor ke
 Postman Collection. Setiap perubahan dicatat di Riwayat Perubahan beserta nomor versinya.
@@ -39,8 +39,7 @@ Semua error berbentuk `{ "message": string, "errors"?: { field: string[] } }`.
 | 403 | Role tidak berwenang atas endpoint | `{"message":"Anda tidak berwenang mengakses halaman ini."}` |
 | 404 | Data tidak ada / di luar cakupan role | `{"message":"Data tidak ditemukan."}` |
 | 422 | Validasi gagal, **atau perpindahan status di luar alur**, data terkunci, No LHPK/No MO ganda, kuota koreksi habis, kiriman Makloon melebihi kapasitas | `{"message":"Perpindahan status tidak sesuai alur.","errors":{"status":["Pengolahan tidak berada di tahap operasi."]}}` |
-| 429 | Batas laju terlampaui (login, upload) | `{"message":"Too Many Attempts."}` + header `Retry-After` |
-| 409 | Khusus Idempotency-Key: request pertama dengan key yang sama masih diproses | `{"message":"Permintaan yang sama sedang diproses."}` |
+| 429 | Batas laju terlampaui (login, upload), atau request kembar dengan Idempotency-Key yang sama masih diproses | `{"message":"Too Many Attempts."}` + header `Retry-After` |
 
 FE cukup menampilkan `message`, dan `errors[field][0]` di bawah input terkait.
 
@@ -296,14 +295,25 @@ Body gudang: `{kode_gudang, nama_gudang, alamat?, kabupaten?, kapasitas_kg?, is_
 
 ## 4. Idempotency-Key
 
+Sudah diimplementasikan: `App\Http\Middleware\VerifikasiIdempotencyKey`, terpasang di semua
+rute yang memerlukan login. Header bersifat opsional: request tanpa header diproses biasa
+(frontend web), tetapi mobile selalu mengirimnya (`mobile/src/lib/api.ts`).
+
 | Situasi | Respons |
 |---|---|
-| Key baru | Diproses normal, respons disimpan 24 jam |
-| Key sama, body sama, sudah selesai | Respons tersimpan dikembalikan + header `Idempotent-Replayed: true` |
-| Key sama, request pertama masih diproses | 409 |
-| Key sama, body berbeda | 422 `errors.idempotency_key` |
+| Key baru | Diproses normal. Respons **2xx** disimpan 24 jam |
+| Key sama, method + path + body sama, sudah berhasil | Respons tersimpan dikembalikan (kode & body sama) + header `Idempotent-Replayed: true`; data tidak dibuat lagi |
+| Key sama, request pertama masih diproses | 429 + `Retry-After: 2` (mobile otomatis mengulang) |
+| Key sama, method/path/body berbeda | 422 `errors.idempotency_key` |
+| Key kosong atau > 100 karakter | 422 `errors.idempotency_key` |
+| Request pertama gagal (4xx/5xx) | Tidak disimpan; pengulangan dengan key yang sama diproses ulang |
 
-Key berlaku per user. Respons 5xx tidak disimpan, jadi boleh diulang dengan key yang sama.
+- Key berlaku per user; key yang sama dari user lain tidak bentrok.
+- Untuk upload foto (multipart), isi berkas ikut dibandingkan, jadi foto yang sama dengan key
+  yang sama tidak tersimpan dua kali.
+- Mobile: buat key **sekali per aksi simpan** dan pakai ulang di setiap percobaan (seperti
+  antrean foto di `mobile/src/lib/foto.ts`). Key baru di setiap percobaan tidak melindungi dari
+  data ganda.
 
 ## 5. Hal yang perlu disepakati FE
 
@@ -318,4 +328,5 @@ Key berlaku per user. Respons 5xx tidak disimpan, jadi boleh diulang dengan key 
 | Versi | Tanggal | Perubahan |
 |---|---|---|
 | 0.1 | 2026-11-26 | Draf awal |
+| 0.3 | 2026-11-26 | Idempotency-Key diimplementasikan; request kembar yang masih diproses dijawab 429 (bukan 409) karena mobile menganggap 4xx lain gagal permanen; hanya respons 2xx yang disimpan |
 | 0.2 | 2026-11-26 | Disesuaikan dengan laporan: setiap alur melewati Gudang dan UB Jastasma; transisi di luar alur 422; MO punya status `draft` dan kelola anggota; No OUT diterbitkan sistem; kuota koreksi per petugas; Jaminan Makloon memeriksa kiriman Makloon |

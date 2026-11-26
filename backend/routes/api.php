@@ -23,7 +23,8 @@ Route::get('/foto/{media}', [FotoStreamController::class, 'stream'])
 
 // `user.aktif` menendang akun yang dinonaktifkan admin dari sesi yang masih berjalan --
 // lihat App\Http\Middleware\PastikanUserAktif.
-Route::middleware(['auth:sanctum', 'user.aktif'])->group(function () {
+// `idempotency` setelah auth: key berlaku per user -- lihat App\Http\Middleware\VerifikasiIdempotencyKey.
+Route::middleware(['auth:sanctum', 'user.aktif', 'idempotency'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
