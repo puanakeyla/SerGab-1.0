@@ -1,27 +1,52 @@
 import { useEffect, useState } from 'react';
 import { Alert, FlatList, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useNetworkState } from 'expo-network';
 import { pesanKegagalan } from '@/lib/api';
-import { ambilFoto, daftarAntrean, hapusDariAntrean, IzinDitolak, simpanLokal, unggah, type FotoLokal } from '@/lib/foto';
+import { useAuth } from '@/lib/auth';
+import {
+  ambilFoto,
+  daftarAntrean,
+  hapusDariAntrean,
+  IzinDitolak,
+  pantauAntrean,
+  simpanLokal,
+  unggah,
+  unggahSemua,
+  type FotoLokal,
+} from '@/lib/foto';
 import { warna } from '@/theme';
 
 // Layar fondasi: membuktikan alur izin → kamera/galeri → simpan lokal → unggah. Nanti dipanggil
 // dari form tiap tahap dengan transaksiId & jenisFoto yang sudah pasti.
 export default function Foto() {
+  const userId = useAuth().user!.id;
+  const jaringan = useNetworkState();
+  const offline = jaringan.isConnected === false || jaringan.isInternetReachable === false;
   const [transaksiId, setTransaksiId] = useState('');
   const [jenisFoto, setJenisFoto] = useState('foto_gabah');
   const [antrean, setAntrean] = useState<FotoLokal[]>([]);
   const [sibuk, setSibuk] = useState<string | null>(null);
+  const [sinkron, setSinkron] = useState(false);
 
-  const muatUlang = () => daftarAntrean().then(setAntrean);
-  useEffect(() => void muatUlang(), []);
+  // Unggah otomatis (root layout) juga mengubah antrean, jadi daftar ini mengikuti setiap perubahan.
+  useEffect(() => {
+    const muat = () => void daftarAntrean(userId).then(setAntrean);
+    muat();
+    return pantauAntrean(muat);
+  }, [userId]);
+
+  function unggahSekarang() {
+    setSinkron(true);
+    unggahSemua(userId).finally(() => setSinkron(false));
+  }
 
   async function tambah(sumber: 'kamera' | 'galeri') {
     try {
       const asset = await ambilFoto(sumber);
       if (!asset) return;
       setSibuk('simpan');
-      await simpanLokal(asset, transaksiId.trim(), jenisFoto.trim());
-      await muatUlang();
+      await simpanLokal(asset, transaksiId.trim(), jenisFoto.trim(), userId);
+      unggahSekarang();
     } catch (e) {
       if (e instanceof IzinDitolak) {
         Alert.alert(
@@ -43,7 +68,6 @@ export default function Foto() {
     setSibuk(foto.id);
     try {
       await unggah(foto);
-      await muatUlang();
     } catch (e) {
       Alert.alert('Gagal mengunggah', `${pesanKegagalan(e)}\nFoto tetap tersimpan di HP.`);
     } finally {
@@ -71,6 +95,8 @@ export default function Foto() {
             </Pressable>
           </View>
           <Text style={s.judul}>Antrean unggah ({antrean.length})</Text>
+          {offline && <Text style={s.info}>Offline. Foto tersimpan di HP dan terunggah otomatis saat koneksi pulih.</Text>}
+          {sinkron && <Text style={s.info}>Mengunggah antrean...</Text>}
         </View>
       }
       ListEmptyComponent={<Text style={s.redup}>Belum ada foto yang menunggu diunggah.</Text>}
@@ -80,6 +106,7 @@ export default function Foto() {
           <View style={{ flex: 1 }}>
             <Text style={s.teks}>{item.jenisFoto}</Text>
             <Text style={s.redup}>{item.transaksiId}</Text>
+            {item.gagal && <Text style={s.gagal}>Ditolak server: {item.gagal}</Text>}
           </View>
           <Pressable style={[s.kecil, !!sibuk && s.mati]} disabled={!!sibuk} onPress={() => kirim(item)}>
             <Text style={s.tombolTeks}>{sibuk === item.id ? '...' : 'Unggah'}</Text>
@@ -87,7 +114,7 @@ export default function Foto() {
           <Pressable
             style={[s.kecil, s.hapus, !!sibuk && s.mati]}
             disabled={!!sibuk}
-            onPress={() => hapusDariAntrean(item.id).then(muatUlang)}
+            onPress={() => hapusDariAntrean(item.id)}
             accessibilityLabel="Hapus foto"
           >
             <Text style={[s.tombolTeks, { color: warna.danger }]}>Hapus</Text>
@@ -111,4 +138,6 @@ const s = StyleSheet.create({
   redup: { color: warna.teksRedup, fontSize: 13 },
   kecil: { backgroundColor: warna.primary, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10 },
   hapus: { backgroundColor: warna.dangerBg },
+  info: { color: warna.primary, backgroundColor: warna.primaryTint, padding: 10, borderRadius: 8 },
+  gagal: { color: warna.danger, fontSize: 12, marginTop: 2 },
 });

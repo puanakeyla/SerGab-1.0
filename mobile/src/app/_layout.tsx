@@ -2,10 +2,12 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { useUnggahOtomatis } from '@/lib/foto';
 import { warna } from '@/theme';
 
 function Navigasi() {
   const { user, loading } = useAuth();
+  useUnggahOtomatis(user?.id ?? null);
 
   if (loading) {
     return (
